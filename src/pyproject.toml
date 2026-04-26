@@ -1,0 +1,8 @@
+[project]
+name = "src"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+    "sacpy>=0.0.24",
+    "scapy>=2.7.0",
+]
