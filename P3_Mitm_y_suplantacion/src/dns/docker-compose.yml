@@ -1,0 +1,28 @@
+networks:
+  dnsnet:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+
+services:
+  dnsserver:
+    image: internetsystemsconsortium/bind9:9.18
+    container_name: dnsserver
+    networks:
+      dnsnet:
+        ipv4_address: 172.20.0.10
+    volumes:
+      - ./bind:/etc/bind
+    cap_add:
+      - NET_ADMIN
+
+  resolver:
+    image: alpine
+    container_name: resolver
+    networks:
+      dnsnet:
+        ipv4_address: 172.20.0.20
+    command: sh -c "apk add --no-cache bind-tools && sleep infinity"
+    cap_add:
+      - NET_ADMIN
