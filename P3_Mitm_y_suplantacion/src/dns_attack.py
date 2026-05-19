@@ -9,7 +9,7 @@ import random
 import string
 import time
 
-DNS_SERVER = "172.20.0.10"   # dnsserver
+DNS_SERVER = "172.20.0.20"   # dnsserver
 DOMAIN     = "example.com"
 COUNT      = 30               # número de consultas a enviar
 DELAY      = 0.1              # segundos entre consultas

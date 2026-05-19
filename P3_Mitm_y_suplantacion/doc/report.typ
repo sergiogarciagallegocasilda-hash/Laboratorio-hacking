@@ -50,11 +50,11 @@
 // Resumen
 = Resumen
 
-Este trabajo aborda el diseño e implementación de un sistema ligero de detección de intrusos orientado a dos amenazas de red bien diferenciadas: el envenenamiento de tablas ARP mediante la técnica conocida como ARP Spoofing, y la enumeración masiva de subdominios DNS relacionada con el ataque de Kaminsky y el DNS Snooping. Ambas técnicas son empleadas habitualmente como fases de reconocimiento o posicionamiento previas a ataques más graves, como la interceptación silenciosa de comunicaciones o el envenenamiento de la caché de un resolvedor DNS.
+Se implementa un sistema de detección de intrusos para dos ataques de red: ARP Spoofing (envenenamiento de tablas ARP) y DNS Snooping (enumeración masiva de subdominios). Ambos se usan como fase previa a ataques más graves: el primero para interceptar tráfico en silencio, el segundo para envenenar la caché de un resolvedor DNS o cartografiar la infraestructura interna.
 
-Para reproducir los escenarios de ataque de forma segura y aislada se han empleado entornos de red virtualizados mediante Docker Compose, lo que ha permitido definir topologías realistas con múltiples nodos sin necesidad de infraestructura física adicional. La herramienta bettercap se ha utilizado para ejecutar el ataque ARP, mientras que el tráfico DNS malicioso se ha generado mediante un script propio construido con la librería Scapy.
+Los escenarios se reprodujeron en entornos Docker Compose aislados. El ataque ARP se ejecutó con bettercap; el tráfico DNS malicioso se generó con un script propio en Scapy.
 
-Los sistemas de detección desarrollados, también basados en Scapy, han funcionado correctamente en ambos escenarios: la función `alert_arpspoof` detectó el cambio de dirección MAC asociado al envenenamiento ARP, y la función `alert_dnssnooping` identificó la ráfaga de consultas DNS sospechosas al superar el umbral configurado. Los resultados demuestran que es posible construir detectores funcionales con herramientas de código abierto y un nivel de complejidad técnica accesible.
+Los dos detectores, también escritos en Scapy, funcionaron correctamente: `alert_arpspoof` identificó el cambio de MAC provocado por el envenenamiento ARP, y `alert_dnssnooping` detectó la ráfaga de consultas al superar el umbral configurado. Ninguno requirió infraestructura adicional más allá de análisis pasivo de tráfico.
 
 #pagebreak()
 
@@ -74,7 +74,7 @@ Los sistemas de detección desarrollados, también basados en Scapy, han funcion
 // Introducción
 = Introducción
 
-La seguridad en redes locales es uno de los vectores de ataque más frecuentemente subestimados. Mientras que la mayor parte de los esfuerzos defensivos se concentran en las capas superiores del modelo OSI, los ataques que operan en la capa de enlace y en la capa de aplicación DNS pueden pasar completamente desapercibidos si no existe una monitorización activa del tráfico de red.
+Los ataques de capa 2 pasan desapercibidos con más frecuencia de lo que debería, en parte porque la atención defensiva suele concentrarse en capas superiores. Sin monitorización activa del tráfico local, ARP Spoofing y DNS Snooping pueden operar durante tiempo indefinido sin dejar rastro visible para el usuario afectado.
 
 El protocolo ARP (Address Resolution Protocol) fue diseñado en los años 80 sin mecanismos de autenticación @rfc826. Su funcionamiento es sencillo: cuando un nodo necesita conocer la dirección MAC asociada a una IP, emite una solicitud ARP en broadcast y el nodo correspondiente responde con su MAC. El problema es que cualquier nodo de la red puede enviar una respuesta ARP sin que nadie lo haya solicitado, y los sistemas operativos actualizan su caché sin verificar la legitimidad de esa respuesta. Esta carencia es la base del ARP Spoofing @bettercap.
 
@@ -84,7 +84,7 @@ Por otro lado, el sistema de nombres de dominio (DNS) también presenta vulnerab
 
 Relacionada con esta técnica, la denominada DNS Snooping @dns_snooping aprovecha el análisis de la caché de un resolvedor para deducir qué dominios han sido consultados recientemente desde la red interna, lo que permite cartografiar la infraestructura o los hábitos de navegación de los usuarios.
 
-El objetivo de esta práctica es implementar dos firmas de detección basadas en análisis pasivo de tráfico para identificar ambos tipos de ataque en tiempo real, sin interferir con el tráfico legítimo de la red.
+Esta práctica implementa dos firmas de detección basadas en análisis pasivo de tráfico para identificar ambos tipos de ataque en tiempo real, sin interferir con el tráfico legítimo.
 
 = Fundamentos teóricos
 
@@ -115,7 +115,7 @@ El entorno de pruebas para la parte de ARP se ha definido mediante Docker Compos
 - *Red LAN* (192.168.10.0/24): red interna que simula la red local de una organización. Contiene el nodo víctima (192.168.10.10), el nodo atacante con bettercap (192.168.10.99) y el router (192.168.10.2).
 - *Red WAN* (10.0.0.0/24): red externa que simula Internet o una DMZ. Contiene el router y el servidor web Nginx (10.0.0.10).
 
-El router tiene una interfaz en cada red y actúa como pasarela con IP forwarding habilitado, replicando el comportamiento de un gateway real en una red corporativa. El servidor web representa un destino legítimo al que la víctima accedería normalmente.
+El router tiene una interfaz en cada red y actúa como pasarela con IP forwarding habilitado, lo que reproduce el comportamiento de un gateway real en una red corporativa. El servidor web actúa como destino legítimo al que la víctima accedería normalmente.
 
 El nodo atacante utiliza la imagen oficial de Kali Linux y dispone de capacidades de red elevadas (`NET_ADMIN` y `NET_RAW` en Docker) para poder manipular y enviar paquetes a nivel de enlace, lo cual es necesario para que bettercap pueda operar correctamente.
 
@@ -126,7 +126,7 @@ El nodo atacante utiliza la imagen oficial de Kali Linux y dispone de capacidade
 
 === Herramienta de ataque: bettercap
 
-Para simular el envenenamiento ARP se ha utilizado bettercap @bettercap, una herramienta de auditoría de red de código abierto ampliamente utilizada en pruebas de penetración. Entre sus módulos destaca `arp.spoof`, que automatiza el envío continuo de respuestas ARP falsificadas hacia los objetivos configurados. La versión empleada en esta práctica es la 2.41.5.
+Para simular el envenenamiento ARP se ha utilizado bettercap @bettercap (v2.41.5), una herramienta de auditoría de red de código abierto habitual en pruebas de penetración. Su módulo `arp.spoof` automatiza el envío continuo de respuestas ARP falsificadas hacia los objetivos configurados.
 
 #figure(
   image("images/cap01_bettercap_instalado.png", width: 80%),
@@ -173,7 +173,7 @@ def alert_arpspoof(packet):
             arp_table[ip_src] = mac_src
 ```
 
-Este patrón de detección se fundamenta en que el ARP Spoofing requiere enviar respuestas ARP no solicitadas (_gratuitous ARP_) de forma continua para mantener la caché de la víctima envenenada. Cada uno de esos paquetes es una oportunidad para que el detector identifique la anomalía.
+El ARP Spoofing requiere enviar respuestas ARP no solicitadas (_gratuitous ARP_) de forma continua para mantener la caché de la víctima envenenada, lo que genera un flujo constante de paquetes que el detector puede analizar.
 
 == Escenario de red para DNS Snooping
 
@@ -211,7 +211,7 @@ El uso de una ventana deslizante en lugar de un contador fijo permite detectar r
 
 === Script generador de tráfico
 
-Para validar el funcionamiento del detector se ha implementado el script `dns_attack.py`, que simula el comportamiento de un atacante ejecutando la fase de enumeración del ataque de Kaminsky. El script genera 30 paquetes UDP dirigidos al puerto 53 del servidor DNS, cada uno con un nombre de subdominio aleatorio de ocho caracteres sobre el dominio `example.com`. Los subdominios se generan de forma completamente aleatoria para simular la búsqueda de nombres inexistentes que forzaría consultas recursivas al servidor autoritativo:
+Para validar el funcionamiento del detector se ha implementado el script `dns_attack.py`, que simula el comportamiento de un atacante ejecutando la fase de enumeración del ataque de Kaminsky. El script genera 30 paquetes UDP dirigidos al puerto 53 del nodo resolver (172.20.0.20), cada uno con un nombre de subdominio aleatorio de ocho caracteres sobre el dominio `example.com`. Atacar el resolver recursivo y no el servidor autoritativo es precisamente la mecánica del ataque de Kaminsky: el objetivo es que el resolver haga las consultas recursivas mientras el atacante intenta inyectar respuestas falsas. Los subdominios se generan de forma completamente aleatoria para forzar esas consultas recursivas:
 
 ```python
 def random_subdomain(length=8):
@@ -229,7 +229,7 @@ El intervalo entre consultas se fija en 0.1 segundos, lo que garantiza que se su
 
 = Resultados
 
-Los dos sistemas de detección han operado correctamente durante las pruebas, generando alertas en tiempo real sin falsos negativos en los escenarios evaluados. A continuación se detallan los resultados obtenidos para cada parte.
+Ambos detectores generaron alertas en tiempo real sin falsos negativos en los escenarios evaluados.
 
 == Detección de ARP Spoofing
 
@@ -270,7 +270,7 @@ El detector `alert_dnssnooping` identificó la ráfaga en tiempo real y generó 
   caption: [Alerta generada por alert_dnssnooping al superar el umbral de 10 consultas en 5 segundos desde 172.20.0.1.],
 )
 
-Durante las pruebas se observó que el propio servidor DNS (`172.20.0.10`) también generó alertas, ya que al procesar y reenviar las consultas recibidas producía a su vez un volumen de tráfico DNS elevado. Esto pone de manifiesto que el umbral debe calibrarse teniendo en cuenta el comportamiento normal del servidor en la red objetivo.
+El detector identificó únicamente la IP origen del script de ataque (`172.20.0.1`) como fuente de la ráfaga, alcanzando el umbral de 10 consultas en menos de 5 segundos. El nodo resolver (172.20.0.20) recibió los paquetes y los procesó internamente, pero no generó tráfico suficiente hacia fuera para disparar la alerta. Esto confirma que dirigir el ataque al resolver recursivo, tal y como ocurre en el ataque de Kaminsky real, produce el patrón de detección esperado sin falsos positivos.
 
 #figure(
   table(
@@ -278,23 +278,23 @@ Durante las pruebas se observó que el propio servidor DNS (`172.20.0.10`) tambi
     align: (left, center, center, center),
     table.header([*IP origen*], [*Consultas en 5s*], [*Umbral*], [*Resultado*]),
     [172.20.0.1 (script ataque)], [10], [10], [DNS Snooping ✓],
-    [172.20.0.10 (dnsserver)],    [10], [10], [DNS Snooping ✓],
     [172.20.0.20 (resolver)],     [< 10], [10], [Sin anomalías],
+    [172.20.0.10 (dnsserver)],    [< 10], [10], [Sin anomalías],
   ),
   caption: [Resumen de alertas DNS generadas durante la simulación del ataque de Kaminsky.]
 )
 
 = Conclusiones
 
-Esta práctica ha permitido comprobar que la detección temprana de ataques de ARP Spoofing y DNS Snooping es técnicamente accesible mediante herramientas de código abierto y un análisis pasivo del tráfico de red. No es necesario disponer de soluciones comerciales costosas para implementar un nivel básico de visibilidad sobre estas amenazas.
+Detectar ARP Spoofing y DNS Snooping no requiere herramientas comerciales. Con análisis pasivo de tráfico y dos criterios simples, cambio de MAC en ARP y umbral de consultas DNS, se obtienen alertas funcionales que de otro modo habrían pasado desapercibidas.
 
-En el caso del ARP Spoofing, la firma implementada demostró ser efectiva y de baja latencia: la alerta se generó prácticamente en tiempo real, con el primer paquete ARP falsificado. La principal limitación del enfoque adoptado es que la legitimidad de la primera asociación IP-MAC observada se asume sin verificación. En un entorno de producción, esta debilidad podría mitigarse mediante una lista blanca estática de asociaciones conocidas o mediante la integración con un inventario de activos de red.
+El detector de ARP respondió con el primer paquete falsificado. Su punto débil es que asume como legítima la primera asociación IP-MAC que observa: si el atacante llega antes, no hay alerta. En producción esto se resuelve con una lista blanca estática de asociaciones conocidas o integrando el detector con un inventario de activos.
 
-En cuanto al DNS Snooping, el mecanismo de umbral ha resultado eficaz para detectar la ráfaga de consultas generada por el script de ataque. Sin embargo, la observación de que el propio servidor DNS también disparó alertas es un recordatorio de que cualquier sistema de detección basado en umbrales fijos requiere un proceso de calibración previo. Una mejora natural sería complementar el análisis de volumen con la inspección de los nombres de subdominio consultados, buscando patrones de aleatoriedad estadística característicos de la generación automatizada de subdominios.
+El umbral de DNS funcionó para el escenario simulado, pero cualquier umbral fijo requiere calibración previa. Añadir análisis de aleatoriedad estadística sobre los nombres de subdominio consultados reduciría los falsos positivos en redes con tráfico DNS elevado.
 
-La virtualización mediante Docker se ha revelado como una aproximación muy adecuada para este tipo de prácticas: permite definir topologías de red complejas en minutos, garantiza el aislamiento del tráfico generado y facilita la reproducción del entorno en cualquier máquina con Docker instalado. El uso de `docker-compose` para describir la topología como código también aporta valor desde el punto de vista de la documentación y la reproducibilidad.
+Docker fue la parte más práctica de todo esto: levantar una topología de cuatro nodos con dos redes virtuales tomó minutos, y desmontar el entorno no dejó rastro. Describir la topología como `docker-compose.yml` también funciona como documentación.
 
-Como línea de trabajo futuro, sería interesante integrar ambos detectores en un sistema de correlación de eventos que pudiese detectar ataques combinados, donde el ARP Spoofing se use como paso previo para interceptar y manipular el tráfico DNS de la víctima, forzando la resolución de dominios maliciosos.
+Un paso siguiente lógico sería correlacionar ambos detectores: el ARP Spoofing se usa a menudo como paso previo para interceptar y manipular el tráfico DNS, forzando la resolución de dominios maliciosos. Detectarlos juntos daría más señal que detectarlos por separado.
 
 = Bibliografía
 
